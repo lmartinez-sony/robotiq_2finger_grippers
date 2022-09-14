@@ -2,7 +2,7 @@ import serial
 from serial.serialutil import SerialException
 
 from pymodbus.client.sync import ModbusSerialClient
-import robotiq_modbus_rtu.comModbusRtu
+import comModbusRtu
 
 from math import ceil
 
@@ -17,7 +17,7 @@ FORCE_INDEX    = 12
 class Robotiq2FingerGripper:
     def __init__(self, device_id=0, stroke=0.085, comport='/dev/ttyUSB0',baud=115200):
 
-        self.client = robotiq_modbus_rtu.comModbusRtu.communication()
+        self.client = comModbusRtu.communication()
         
         connected = self.client.connectToDevice(device = comport)
         if not connected:

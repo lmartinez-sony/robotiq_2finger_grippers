@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
  brief  Driver for Robotiq 85 communication
 
- Platform: Linux/ROS Indigo
+ Platform: Linux/ROS Humble
 --------------------------------------------------------------------"""
 
 """
@@ -45,15 +45,17 @@ controlling a given gripper, and commanded by the user commands puubished by an 
 """
 
 from robotiq_2f_gripper import Robotiq2FingerGripper
-from robotiq_2f_gripper_msgs.msg import RobotiqGripperCommand, RobotiqGripperStatus, CommandRobotiqGripperGoal
+from robotiq_2f_gripper_msgs.msg import RobotiqGripperCommand, RobotiqGripperStatus
+from robotiq_2f_gripper_msgs.action import CommandRobotiqGripper
 from sensor_msgs.msg import JointState
 import numpy as np
-import rospy
+import rclpy
+from rclpy.node import Node
 from enum import Enum
 
 WATCHDOG_TIME = 1.0   # Max Time without communication with gripper allowed
 
-class Robotiq2FingerGripperDriver:
+class Robotiq2FingerGripperDriver(Node):
     """
     This class represents an abstraction of a gripper driver, it handles the gripper connection, initialization,
     command send request, status request, and publishing of joint position to the `/joint_state` topic.   
@@ -74,11 +76,13 @@ class Robotiq2FingerGripperDriver:
                             1: Driver is running
                             2: Gripper has been activated
     """
-    def __init__(self, comport = '/dev/ttyUSB0', baud = '115200', stroke = 0.085, joint_name='finger_joint'):
+    def __init__(self, comport = '/dev/ttyUSB0', baud = '115200', stroke = 0.085, joint_names='finger_joint', rate=100):
+
+        super().__init__('robotiq_2f_gripper_driver')
         self._comport = comport
         self._baud = baud
-        self._joint_name = joint_name          
-        
+        self._joint_names = joint_names
+        self._rate = rate
 
         # Instanciate and open communication with gripper.
         self._gripper = Robotiq2FingerGripper(device_id=0, stroke=stroke, comport=self._comport, baud=self._baud)
@@ -88,62 +92,62 @@ class Robotiq2FingerGripperDriver:
             self._max_joint_limit = 0.7
         
         if not self._gripper.init_success:
-            rospy.logerr("Unable to open commport to %s" % self._comport)
+            self.get_logger().error("Unable to open comport to {}".format(self._comport))
             return
         else:
-            rospy.loginfo("Connection to gripper with stroke %.3f[m] on port %s successful" % ( self._gripper.stroke, self._comport))
+            self.get_logger().info("Connection to gripper with stroke {}[m] on port {} successful".format(self._gripper.stroke, self._comport))
 
-        self._gripper_joint_state_pub = rospy.Publisher("/joint_states" , JointState, queue_size=10)        
+        self._gripper_joint_state_pub = self.create_publisher(JointState, "~/joint_states", 10)        
 
         self._seq = 0
         self._prev_joint_pos = 0.0
-        self._prev_joint_state_time = rospy.get_time() 
+        self._prev_joint_state_time = self.get_clock().now().nanoseconds / 1e9 
         self._driver_state = 0
         self.is_ready = False
         
         if not self._gripper.getStatus():
-            rospy.logerr("Failed to contact gripper on port %s ... ABORTING" % self._comport)
+            self.get_logger().error("Failed to contact gripper on port {}... ABORTING".format(self._comport))
             return                
                 
         self._run_driver()
-        self._last_update_time = rospy.get_time()
+        self._last_update_time = self.get_clock().now().nanoseconds / 1e9
         
     def _clamp_position(self,cmd):
-        out_of_bouds = False
+        out_of_bounds = False
         if (cmd <= 0.0):
-            out_of_bouds = True
+            out_of_bounds = True
             cmd_corrected = 0.0
         elif (cmd > self._gripper.stroke):
-            out_of_bouds = True
+            out_of_bounds = True
             cmd_corrected = self._gripper.stroke
-        if(out_of_bouds):
-            rospy.logdebug("Position (%.3f[m]) out of limits for %d[mm] gripper: \n- New position: %.3f[m]\n- Min position: %.3f[m]\n- Max position: %.3f[m]" % (cmd, self._gripper.stroke*1000, cmd_corrected, 0.0, self._gripper.stroke))
+        if(out_of_bounds):
+            self.get_logger().debug("Position ({%.3f}[m]) out of limits for {%d}[mm] gripper: \n- New position: {%.3f}[m]\n- Min position: {%.3f}[m]\n- Max position: {%.3f}[m]".format(cmd, self._gripper.stroke*1000, cmd_corrected, 0.0, self._gripper.stroke))
             cmd = cmd_corrected
         return cmd
 
     def _clamp_speed(self,cmd):
-        out_of_bouds = False
+        out_of_bounds = False
         if (cmd <= 0.013):
-            out_of_bouds = True
+            out_of_bounds = True
             cmd_corrected = 0.013
         elif (cmd > 0.101):
-            out_of_bouds = True
+            out_of_bounds = True
             cmd_corrected = 0.1
-        if(out_of_bouds):
-            rospy.logdebug("Speed (%.3f[m/s]) out of limits for %d[mm] gripper: \n- New speed: %.3f[m/s]\n- Min speed: %.3f[m/s]\n- Max speed: %.3f[m/s]" % (cmd, self._gripper.stroke*1000, cmd_corrected, 0.013, 0.1))
+        if(out_of_bounds):
+            self.get_logger().debug("Speed ({%.3f}[m/s]) out of limits for {%d}[mm] gripper: \n- New speed: {%.3f}[m/s]\n- Min speed: {%.3f}[m/s]\n- Max speed: {%.3f}[m/s]".format(cmd, self._gripper.stroke*1000, cmd_corrected, 0.013, 0.1))
             cmd = cmd_corrected
         return cmd
     
     def _clamp_force(self,cmd):
-        out_of_bouds = False
+        out_of_bounds = False
         if (cmd < 0.0):
-            out_of_bouds = True
+            out_of_bounds = True
             cmd_corrected = 0.0
         elif (cmd > 100.0):
-            out_of_bouds = True
+            out_of_bounds = True
             cmd_corrected = 100.0
-        if(out_of_bouds):
-            # rospy.logdebug("Force (%.3f[%]) out of limits for %d[mm] gripper: \n- New force: %.3f[%]\n- Min force: %.3f[%]\n- Max force: %.3f[%]" % (cmd, self._gripper.stroke*1000, cmd_corrected, 0, 100))
+        if(out_of_bounds):
+            self.get_logger().debug("Force ({%.3f}[%]) out of limits for {%d}[mm] gripper: \n- New force: {%.3f}[%]\n- Min force: {%.3f}[%]\n- Max force: {%.3f}[%]".format(cmd, self._gripper.stroke*1000, cmd_corrected, 0, 100))
             cmd = cmd_corrected
         return cmd
     
@@ -168,7 +172,7 @@ class Robotiq2FingerGripperDriver:
             pos = self._clamp_position(cmd.position)
             vel = self._clamp_speed(cmd.speed)
             force = self._clamp_force(cmd.force)
-            # rospy.loginfo(" %.3f %.3f %.3f " % (pos,vel,force))
+            # self.get_logger().info(" {} {} {} ".format(pos, vel, force))
             self._gripper.goto(pos=pos,vel=vel,force=force)
             
     def get_current_gripper_status(self):
@@ -178,7 +182,7 @@ class Robotiq2FingerGripperDriver:
         Returns:  Instance of `robotiq_2f_gripper_msgs/RobotiqGripperStatus` message. See the message declaration for fields description
         """
         status = RobotiqGripperStatus()
-        status.header.stamp = rospy.get_rostime()
+        status.header.stamp = self.get_clock().now()
         status.header.seq = self._seq
         status.is_ready = self._gripper.is_ready()
         status.is_reset = self._gripper.is_reset()
@@ -196,16 +200,16 @@ class Robotiq2FingerGripperDriver:
         """
         js = JointState()
         js.header.frame_id = ''
-        js.header.stamp = rospy.get_rostime()
+        js.header.stamp = self.get_clock().now()
         js.header.seq = self._seq
-        js.name = [self._joint_name]
+        js.name = [self._joint_names]
         max_joint_limit = 0.8
         if( self._gripper.stroke == 0.140 ):
             max_joint_limit = 0.7
         pos = np.clip(max_joint_limit - ((max_joint_limit/self._gripper.stroke) * self._gripper.get_pos()), 0., max_joint_limit)
         js.position = [pos]
-        dt = rospy.get_time() - self._prev_joint_state_time
-        self._prev_joint_state_time = rospy.get_time()
+        dt = self.get_clock().now().nanoseconds / 1e9 - self._prev_joint_state_time
+        self._prev_joint_state_time = self.get_clock().now().nanoseconds / 1e9
         js.velocity = [(pos-self._prev_joint_pos)/dt]
         self._prev_joint_pos = pos
         return js
@@ -220,11 +224,11 @@ class Robotiq2FingerGripperDriver:
         Raises: 
             IOError: If Modbus RTU communication with the gripper is not achieved.
         """
-        last_time = rospy.get_time()
-        r = rospy.Rate(rospy.get_param('~rate', 100))
-        while not rospy.is_shutdown() and self._driver_state != 2:
+        last_time = self.get_clock().now().nanoseconds / 1e9
+        r = self.create_rate(self._rate)
+        while rclpy.utilities.ok() and self._driver_state != 2:
             # Check if communication is failing or taking too long
-            dt = rospy.get_time() - last_time
+            dt = self.get_clock().now().nanoseconds / 1e9 - last_time
             if (0 == self._driver_state):
                 if (dt < 0.5):
                     self._gripper.deactivate_gripper()
@@ -236,14 +240,14 @@ class Robotiq2FingerGripperDriver:
                 self._gripper.activate_gripper()
                 is_gripper_activated &= self._gripper.is_ready()
                 if (is_gripper_activated):
-                    rospy.loginfo("Gripper on port %s Activated" % self._comport)
+                    self.get_logger().info("Gripper on port {} activated".format(self._comport))
                     self._driver_state = 2
                         
             success = True
             success &= self._gripper.sendCommand()
             success &= self._gripper.getStatus()
-            if not success and not rospy.is_shutdown():
-                rospy.logerr("Failed to initialize contact with gripper %d"% self._gripper.device_id)
+            if not success and rclpy.utilities.ok():
+                self.get_logger().error("Failed to initialize contact with gripper {}".format(self._gripper.device_id))
             else:
                 stat = RobotiqGripperStatus()
                 #js = JointState()
@@ -271,7 +275,7 @@ class Robotiq2FingerGripperDriver:
         success &= self._gripper.getStatus()
 
         # Check if communication is broken
-        update_time = rospy.get_time()
+        update_time = self.get_clock().now().nanoseconds / 1e9
         if success:
             js = JointState()
             js = self._update_gripper_joint_state()
@@ -280,10 +284,10 @@ class Robotiq2FingerGripperDriver:
         
         # If communication failed, check if connection was truly lost
         elif (update_time - self._last_update_time) > WATCHDOG_TIME:
-            rospy.logfatal("Failed to contact gripper on port: %s"% self._comport)
+            self.get_logger().fatal("Failed to contact gripper on port: {}".format(self._comport))
             # self._gripper.shutdown()
-            # rospy.signal_shutdown("Communication to gripper lost")         
-            
+            # self.get_logger().fatal("Communication to gripper lost")
+            # self.shutdown()
 
     def from_distance_to_radians(self, linear_pose ):
       """
@@ -299,123 +303,9 @@ class Robotiq2FingerGripperDriver:
       
     def get_current_joint_position(self):
       return self.from_distance_to_radians(self._gripper.get_pos())
-    ######################################################################################################
-    # STATIC functions for fast control of the gripper.
 
-    @staticmethod
-    def goto( client, pos, speed=0.1, force=120, block = True ):
-        """
-        Static function to update the gripper command
 
-        Args:
-            client: `SimpleActionClient` instance connected to the action server holding a robotiq gripper
-            instance.
-            pos: [m] Position (distance in between fingers) in meters desired for the gripper.
-            speed: [m/s] Motion speed in meters over seconds. Min value: 0.013[m/s] - Max value: 0.1[m/s]
-            force: [%] Force value to apply in gripper motion, see robotiq manuals to calculate an appropiate
-                    gripping force value in Newtons.  
-            block: Boolean indicating whether to lock the current thread until command has been reached or not.
-        """
-        goal = CommandRobotiqGripperGoal()
-        goal.emergency_release = False
-        goal.stop = False
-        goal.position = pos
-        goal.speed = speed
-        goal.force = force
-
-        # Sends the goal to the gripper.
-        if block:   
-            client.send_goal(goal)
-            client.wait_for_result()
-        else:
-            client.send_goal(goal)
-    
-    @staticmethod
-    def close( client, speed=0.1, force=120, block = True,):
-        """
-        Static function to close the gripper 
-
-        Args:
-            client: `SimpleActionClient` instance connected to the action server holding a robotiq gripper
-            instance.
-            speed: [m/s] Motion speed in meters over seconds. Min value: 0.013[m/s] - Max value: 0.1[m/s]
-            force: [%] Force value to apply in gripper motion, see robotiq manuals to calculate an appropiate
-                    gripping force value in Newtons.  
-            block: Boolean indicating whether to lock the current thread until command has been reached or not.
-        """
-        goal = CommandRobotiqGripperGoal()
-        goal.emergency_release = False
-        goal.stop = False
-        goal.position = 0.0
-        goal.speed = speed
-        goal.force = force
-
-        # Sends the goal to the gripper.
-        if block:
-            client.send_goal_and_wait(goal)
-        else:
-            client.send_goal(goal)
-
-    @staticmethod
-    def open( client, speed=0.1, force=120, block = True):
-        """
-        Static function to open the gripper 
-
-        Args:
-            client: `SimpleActionClient` instance connected to the action server holding a robotiq gripper
-            instance.
-            speed: [m/s] Motion speed in meters over seconds. Min value: 0.013[m/s] - Max value: 0.1[m/s]
-            force: [%] Force value to apply in gripper motion, see robotiq manuals to calculate an appropiate
-                    gripping force value in Newtons.  
-            block: Boolean indicating whether to lock the current thread until command has been reached or not.
-        """
-        goal = CommandRobotiqGripperGoal()
-        goal.emergency_release = False
-        goal.stop = False
-        goal.position = 255 # Use max value to make it stroke independent
-        goal.speed = speed
-        goal.force = force
-
-        # Sends the goal to the gripper.
-        if block:
-            client.send_goal_and_wait(goal)
-        else:
-            client.send_goal(goal)
-
-    @staticmethod
-    def stop( client, block = True):
-        """
-        Static function to stop gripper motion
-
-        Args:
-            client: `SimpleActionClient` instance connected to the action server holding a robotiq gripper
-            instance.
-            block: Boolean indicating whether to lock the current thread until command has been reached or not.
-        """
-        goal = CommandRobotiqGripperGoal()
-        goal.emergency_release = False
-        goal.stop = False
-
-        # Sends the goal to the gripper.
-        if block:
-            client.send_goal_and_wait(goal)
-        else:
-            client.send_goal(goal)
-
-    @staticmethod
-    def emergency_release( client ):
-        """
-        Static function to trigger an emergency release motion.
-
-        Args:
-            client: `SimpleActionClient` instance connected to the action server holding a robotiq gripper
-            instance.
-        """
-        goal = CommandRobotiqGripperGoal()
-        goal.emergency_release = True
-        client.send_goal_and_wait(goal)
-
-class Robotiq2FingerSimulatedGripperDriver:
+class Robotiq2FingerSimulatedGripperDriver(Node):
     """
     This class represents an abstraction of a gripper driver for a SIMULATED gripper,
     by simulating the operation/response of the gripper to a given command and the publishing 
@@ -431,14 +321,15 @@ class Robotiq2FingerSimulatedGripperDriver:
         _current_joint_pos: [radians] Position of the simulated joint in radians.
         _current_goal: Instance of `RobotiqGripperCommand` message holding the latest user command.
     """
-    def __init__(self, stroke=0.085, joint_name='finger_joint'):
+    def __init__(self, stroke=0.085, joint_names='finger_joint'):
+        super().__init__('robotiq_2f_simulated_gripper_driver')
         self._stroke = stroke
-        self._joint_name = joint_name
+        self._joint_names = joint_names
         self._current_joint_pos = 0.0                                 
-        self._prev_time = rospy.get_time()
+        self._prev_time = self.get_clock().now().nanoseconds / 1e9
         self._current_goal = CommandRobotiqGripperGoal()
         self._current_goal.position = self._stroke
-        self._gripper_joint_state_pub = rospy.Publisher("/joint_states" , JointState, queue_size=10)  
+        self._gripper_joint_state_pub = self.create_publisher(JointState, "~/joint_states", 10) 
         self.is_ready = True
         self._is_moving = False
         self._max_joint_limit = 0.8
@@ -451,7 +342,7 @@ class Robotiq2FingerSimulatedGripperDriver:
         Public function simulating the gripper state change given the current gripper command and the time
         difference between the last call to this function.
         """
-        delta_time = rospy.get_time() - self._prev_time
+        delta_time = self.get_clock().now().nanoseconds / 1e9 - self._prev_time
         linear_position_goal = self._current_goal.position                                                   #[mm]
         joint_goal = self.from_distance_to_radians(linear_position_goal)                                     #[rad]
         position_increase = (delta_time * self._current_goal.speed) * (self._max_joint_limit/self._stroke) 
@@ -463,7 +354,7 @@ class Robotiq2FingerSimulatedGripperDriver:
             self._is_moving = False
         js = self._update_gripper_joint_state()
         self._gripper_joint_state_pub.publish(js)
-        self._prev_time = rospy.get_time()
+        self._prev_time = self.get_clock().now().nanoseconds / 1e9
 
 
     def update_gripper_command(self, goal_command):
@@ -485,7 +376,7 @@ class Robotiq2FingerSimulatedGripperDriver:
         Returns:  Instance of `robotiq_2f_gripper_msgs/RobotiqGripperStatus` message. See the message declaration for fields description
         """
         status = RobotiqGripperStatus()
-        status.header.stamp = rospy.get_rostime()
+        status.header.stamp = self.get_clock().now()
         status.header.seq = 0
         status.is_ready = True
         status.is_reset = False
@@ -493,7 +384,7 @@ class Robotiq2FingerSimulatedGripperDriver:
         status.obj_detected = False
         status.fault_status = False
         status.position = self.from_radians_to_distance(self._current_joint_pos) #[mm]
-        status.requested_position = self._current_goal.position                                                                                 #[mm]
+        status.requested_position = self._current_goal.position #[mm]
         status.current = 0.0
         return status
 
@@ -518,9 +409,9 @@ class Robotiq2FingerSimulatedGripperDriver:
         """
         js = JointState()
         js.header.frame_id = ''
-        js.header.stamp = rospy.get_rostime()
+        js.header.stamp = self.get_clock().now()
         js.header.seq = 0
-        js.name = [self._joint_name]
+        js.name = [self._joint_names]
         pos = np.clip( self._current_joint_pos, 0.0, self._max_joint_limit)
         js.position = [pos]
         js.velocity = [self._current_goal.speed]
