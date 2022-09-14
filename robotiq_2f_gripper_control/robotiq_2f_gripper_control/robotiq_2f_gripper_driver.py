@@ -327,7 +327,7 @@ class Robotiq2FingerSimulatedGripperDriver(Node):
         self._joint_names = joint_names
         self._current_joint_pos = 0.0                                 
         self._prev_time = self.get_clock().now().nanoseconds / 1e9
-        self._current_goal = CommandRobotiqGripperGoal()
+        self._current_goal = CommandRobotiqGripper.Goal()
         self._current_goal.position = self._stroke
         self._gripper_joint_state_pub = self.create_publisher(JointState, "~/joint_states", 10) 
         self.is_ready = True
