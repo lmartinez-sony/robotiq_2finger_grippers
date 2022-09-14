@@ -233,7 +233,7 @@ class CommandGripperActionServer(Node):
         self._is_stalled = True
         self._processing_goal = False
 
-if __name__ == "__main__":
+def main():
 
     rclpy.init_node('robotiq_2f_action_server')
 
@@ -244,3 +244,5 @@ if __name__ == "__main__":
     rclpy.spin()
     
     
+if __name__ == "__main__":
+    main()
