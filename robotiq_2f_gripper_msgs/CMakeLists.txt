@@ -18,6 +18,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
@@ -25,7 +26,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   msg/RobotiqGripperCommand.msg
   msg/RobotiqGripperStatus.msg
   srv/GetCurrentGripperState.srv
-  DEPENDENCIES std_msgs
+  DEPENDENCIES std_msgs sensor_msgs
 )
 
 if(BUILD_TESTING)
