@@ -28,19 +28,20 @@ def generate_launch_description():
     stroke_parameter_name = 'stroke'
     sim_parameter_name = 'sim'
     rate_parameter_name = 'rate'
+    gripper_id_parameter_name = 'robotiq'
+    robot_num_parameter_name = '1'
     joint_names_parameter_name = 'joint_names'
     comport = LaunchConfiguration(comport_parameter_name)
     baud = LaunchConfiguration(baud_parameter_name)
     stroke = LaunchConfiguration(stroke_parameter_name)
     sim = LaunchConfiguration(sim_parameter_name)
+    gripper_id = LaunchConfiguration(gripper_id_parameter_name)
+    gripper_num = LaunchConfiguration(gripper_num_parameter_name)
     rate = LaunchConfiguration(rate_parameter_name)
     joint_names = LaunchConfiguration(joint_names_parameter_name)
 
-    gripper_config = os.path.join(get_package_share_directory('franka_gripper'), 'config',
-                                  'franka_gripper_node.yaml')
-
     default_joint_name_postfix = '_finger_joint'
-    arm_default_argument = ['[', arm_id, default_joint_name_postfix, '1', ',', arm_id,
+    gripper_default_argument = ['[', gripper_id, default_joint_name_postfix, '1', ',', gripper_id,
                             default_joint_name_postfix, '2', ']']
 
     return LaunchDescription([
@@ -61,32 +62,31 @@ def generate_launch_description():
             default_value='false',
             description='Whether to use a simulated gripper or not'),
         DeclareLaunchArgument(
+            gripper_id_parameter_name,
+            default_value='robotiq',
+            description='Robot name.'),
+        DeclareLaunchArgument(
+            gripper_num_parameter_name,
+            default_value='1',
+            description='Gripper number.'),
+        DeclareLaunchArgument(
             rate_parameter_name,
             default_value='50',
             description='Rate at which to publish joint states'),
         DeclareLaunchArgument(
             joint_names_parameter_name,
-            default_value=arm_default_argument,
+            default_value=gripper_default_argument,
             description='Names of the gripper joints in the URDF'),
         Node(
-            package='franka_gripper',
-            executable='franka_gripper_node',
-            name=[arm_id, '_gripper_', robot_num],
-            parameters=[{'robot_ip': robot_ip, 'joint_names': joint_names}, gripper_config],
-            condition=UnlessCondition(use_fake_hardware)
+            package='robotiq_2f_gripper_control',
+            executable='robotiq_2f_action_server_node',
+            name=[gripper_id, '_gripper_', gripper_num],
+            parameters=[{'comport': comport, 'baud': baud, 'stroke': stroke, 'sim':sim, 'rate':rate, 'joint_names': joint_names}],
         ),
         Node(
-            package='franka_ros_interface',
+            package='robotiq_2f_gripper_control',
             executable='get_current_gripper_state_server',
-            name=['get_current_gripper_state_server_node_', robot_num],
-            parameters=[{'gripper_state_topic_name': ["/franka_gripper_",robot_num,"/joint_states"]}],
-            condition=UnlessCondition(use_fake_hardware)
-        ),
-        Node(
-            package='franka_gripper',
-            executable='fake_gripper_state_publisher.py',
-            name=[arm_id, '_gripper'],
-            parameters=[{'robot_ip': robot_ip, 'joint_names': joint_names}, gripper_config],
-            condition=IfCondition(use_fake_hardware)
+            name=['get_current_gripper_state_server_node_', gripper_num],
+            parameters=[{'gripper_state_topic_name': ["/",gripper_id,"_gripper_",gripper_num,"/joint_states"]}],
         ),
     ])

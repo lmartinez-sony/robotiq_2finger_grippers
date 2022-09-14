@@ -41,7 +41,6 @@ class CommandGripperActionServer(Node):
         self.declare_parameter('~joint_names', 'finger_joint')
         self.declare_parameter('~sim', False)
         self.declare_parameter('~rate', 50)
-        self.declare_parameter('~action_name', 'robotiq_action_server')
 
          # Get Node parameters
         self._comport = self.get_parameter('~comport')
@@ -49,8 +48,7 @@ class CommandGripperActionServer(Node):
         self._stroke = self.get_parameter('~stroke')                
         self._joint_names = self.get_parameter('~joint_names')    
         self._sim = self.get_parameter('~sim')  
-        self._rate = self.get_parameter('~rate')    
-        self._action_name = self.get_parameter('~action_name')  
+        self._rate = self.get_parameter('~rate')      
 
         # Create instance of Robotiq Gripper Driver
         if self._sim: # Use simulated gripper
@@ -58,8 +56,7 @@ class CommandGripperActionServer(Node):
         else:   # Try to connect to a real gripper 
             self._driver = Robotiq2FingerGripperDriver( comport=self._comport, baud=self._baud, stroke=self._stroke, joint_names=self._joint_names, rate=self._rate)
 
-        self._action_name = namespace + action_name
-        self._action_server = ActionServer(self, CommandRobotiqGripperAction, self._action_name, self.execute_cb)
+        self._action_server = ActionServer(self, CommandRobotiqGripperAction, "~/command", self.execute_cb)
         self._joint_trajectory_action_server = ActionServer(FollowJointTrajectoryAction, "~/robotiq_controller/follow_joint_trajectory", \
                                                             self.execute_joint_trajectory_cb)
         self._driver = driver       # Get handle to the Gripper Control Server
@@ -68,7 +65,7 @@ class CommandGripperActionServer(Node):
         watchdog = self.create_timer(15.0, self._connection_timeout)
         while rclpy.utilities.ok() and not self._driver.is_ready:
             time.sleep(0.5)
-            self.get_logger().warn(self._action_name + ": Waiting for gripper to be ready...")
+            self.get_logger().warn("Waiting for gripper to be ready...")
         
         watchdog.cancel() 
         if rclpy.utilities.ok():
@@ -89,7 +86,7 @@ class CommandGripperActionServer(Node):
     
     def execute_cb(self, goal_handle):
       goal_command = goal_handle.request
-      self.get_logger().debug( (self._action_name + ": New goal received Pos:{%.3f} Speed: {%.3f} Force: {%.3f} Force-Stop: {%r}").format(goal_command.position, goal_command.speed, goal_command.force, goal_command.stop) )
+      self.get_logger().debug( ("New goal received Pos:{%.3f} Speed: {%.3f} Force: {%.3f} Force-Stop: {%r}").format(goal_command.position, goal_command.speed, goal_command.force, goal_command.stop) )
       # Send incoming command to gripper driver
       self._driver.update_gripper_command(goal_command)
       # Wait until command is received by the gripper 
@@ -112,7 +109,7 @@ class CommandGripperActionServer(Node):
           self.get_logger().debug("Error = {%.5f} Requested position = {%.3f} Current position = {%.3f}".format(abs(feedback.requested_position - feedback.position), feedback.requested_position, feedback.position))
           # Check for completion of action 
           if( feedback.fault_status != 0 and not self._is_stalled):               # Check for errors
-              self.get_logger().error(self._action_name + ": fault status (gFLT) is: {%d}".format(feedback.fault_status))
+              self.get_logger().error("Fault status (gFLT) is: {%d}".format(feedback.fault_status))
               self._is_stalled = True
               goal_handle.abort()
               return feedback
@@ -125,10 +122,10 @@ class CommandGripperActionServer(Node):
       result = feedback                                   # Message declarations are the same 
       # Send result 
       if not self._is_stalled:
-          self.get_logger().debug(self._action_name + ": goal reached or object detected Pos: {%.3f} PosRequested: {%.3f} ObjectDetected: {%r}".format(goal_command.position, feedback.requested_position, feedback.obj_detected) )
+          self.get_logger().debug("Goal reached or object detected Pos: {%.3f} PosRequested: {%.3f} ObjectDetected: {%r}".format(goal_command.position, feedback.requested_position, feedback.obj_detected) )
           goal_handle.succeed()  
       else:
-          self.get_logger().error(self._action_name + ": goal aborted Pos: {%.3f} PosRequested: {%.3f} ObjectDetected: {%r}".format(goal_command.position, feedback.requested_position, feedback.obj_detected) )
+          self.get_logger().error("Goal aborted Pos: {%.3f} PosRequested: {%.3f} ObjectDetected: {%r}".format(goal_command.position, feedback.requested_position, feedback.obj_detected) )
           goal_handle.abort()  
 
       self._processing_goal = False 
@@ -221,7 +218,7 @@ class CommandGripperActionServer(Node):
       # Entire trajectory was followed/reached
       watchdog.shutdown() 
      
-      self.get_logger().debug(self._action_name + ": goal reached")
+      self.get_logger().debug("Goal reached")
       result.error_code = result.SUCCESSFUL          
       result.error_string = "Goal reached" 
       goal_handle.succeed()  

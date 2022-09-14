@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-        'robotiq_2f_action_server = robotiq_2f_gripper_control.robotiq_2f_action_server:main',
+        'robotiq_2f_action_server_node = robotiq_2f_gripper_control.robotiq_2f_action_server:main',
     ],
     },
 )
