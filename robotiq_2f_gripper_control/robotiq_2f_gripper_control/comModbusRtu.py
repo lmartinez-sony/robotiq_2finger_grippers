@@ -46,7 +46,7 @@ The module depends on pymodbus (http://code.google.com/p/pymodbus/) for the Modb
 from pymodbus.client.sync import ModbusSerialClient
 from math import ceil
 
-class communication:	
+class Communication:	
 
    def __init__(self):
       self.client = None
