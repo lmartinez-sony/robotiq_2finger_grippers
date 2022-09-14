@@ -45,9 +45,9 @@ class CommandGripperActionServer(Node):
          # Get Node parameters
         self._comport = self.get_parameter('~comport').get_parameter_value().string_value
         self._baud = self.get_parameter('~baud').get_parameter_value().integer_value
-        self._stroke = self.get_parameter('~stroke').get_parameter_value().float_value         
-        self._joint_names = self.get_parameter('~joint_names').get_parameter_value() 
-        self._sim = self.get_parameter('~sim').get_parameter_value()
+        self._stroke = self.get_parameter('~stroke').get_parameter_value().double_value         
+        self._joint_names = self.get_parameter('~joint_names').get_parameter_value().string_array_value
+        self._sim = self.get_parameter('~sim').get_parameter_value().bool_value
         self._rate = self.get_parameter('~rate').get_parameter_value().integer_value      
 
         # Create instance of Robotiq Gripper Driver
