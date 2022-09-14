@@ -75,10 +75,7 @@ class CommandGripperActionServer(Node):
             self.get_logger().info("Robotiq server started")
 
         # Send and Request data from gripper and update joint state every `r`[Hz]
-        r = self.create_rate(self._rate)
-        while rclpy.utilities.ok():
-            self._driver.update_driver()
-            r.sleep()
+        self._gripper_state_publisher_timer = self.create_timer(1/self._rate, self._driver.update_driver())
     
     def _connection_timeout(self, event):
         self.get_logger().fatal("Gripper on port {} seems not to respond".format(self._driver._comport))
@@ -235,13 +232,13 @@ class CommandGripperActionServer(Node):
 
 def main():
 
-    rclpy.init_node('robotiq_2f_action_server')
+    rclpy.init('robotiq_action_server')
 
    
     # Start action server 
-    server = CommandGripperActionServer()
+    robotiq_action_server = CommandGripperActionServer()
 
-    rclpy.spin()
+    rclpy.spin(robotiq_action_server)
     
     
 if __name__ == "__main__":
