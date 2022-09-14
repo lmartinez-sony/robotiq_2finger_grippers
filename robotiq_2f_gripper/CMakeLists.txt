@@ -26,6 +26,29 @@ find_package(sensor_msgs REQUIRED)
 find_package(robotiq_2f_gripper_msgs REQUIRED)
 
 
+include_directories(
+  include
+)
+
+add_executable(get_current_gripper_state_server src/get_current_gripper_state_server.cpp)
+ament_target_dependencies(get_current_gripper_state_server
+    robotiq_2f_gripper_msgs
+    rclcpp
+    sensor_msgs
+)
+
+target_include_directories(get_current_gripper_state_server
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+
+install(TARGETS
+    get_current_gripper_state_server
+    DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME})
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights

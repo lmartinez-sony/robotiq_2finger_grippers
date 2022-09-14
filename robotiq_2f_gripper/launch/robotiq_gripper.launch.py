@@ -14,7 +14,7 @@ def generate_launch_description():
     sim_parameter_name = 'sim'
     rate_parameter_name = 'rate'
     gripper_id_parameter_name = 'robotiq'
-    robot_num_parameter_name = '1'
+    gripper_num_parameter_name = '1'
     joint_names_parameter_name = 'joint_names'
     comport = LaunchConfiguration(comport_parameter_name)
     baud = LaunchConfiguration(baud_parameter_name)
@@ -69,7 +69,7 @@ def generate_launch_description():
             parameters=[{'comport': comport, 'baud': baud, 'stroke': stroke, 'sim':sim, 'rate':rate, 'joint_names': joint_names}],
         ),
         Node(
-            package='robotiq_2f_gripper_control',
+            package='robotiq_2f_gripper',
             executable='get_current_gripper_state_server',
             name=['get_current_gripper_state_server_node_', gripper_num],
             parameters=[{'gripper_state_topic_name': ["/",gripper_id,"_gripper_",gripper_num,"/joint_states"]}],
