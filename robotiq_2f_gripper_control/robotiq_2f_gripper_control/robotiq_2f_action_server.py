@@ -232,7 +232,7 @@ class CommandGripperActionServer(Node):
 
 def main():
 
-    rclpy.init('robotiq_action_server')
+    rclpy.init()
 
    
     # Start action server 
