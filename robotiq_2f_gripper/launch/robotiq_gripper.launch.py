@@ -25,10 +25,6 @@ def generate_launch_description():
     rate = LaunchConfiguration(rate_parameter_name)
     joint_names = LaunchConfiguration(joint_names_parameter_name)
 
-    default_joint_name_postfix = '_finger_joint'
-    gripper_default_argument = ['[', gripper_id, default_joint_name_postfix, '1', ',', gripper_id,
-                            default_joint_name_postfix, '2', ']']
-
     return LaunchDescription([
         DeclareLaunchArgument(
             comport_parameter_name,
@@ -60,7 +56,7 @@ def generate_launch_description():
             description='Rate at which to publish joint states'),
         DeclareLaunchArgument(
             joint_names_parameter_name,
-            default_value=gripper_default_argument,
+            default_value='robotiq_finger_joint',
             description='Names of the gripper joints in the URDF'),
         Node(
             package='robotiq_2f_gripper_control',
