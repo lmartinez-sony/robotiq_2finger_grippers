@@ -99,7 +99,6 @@ class Robotiq2FingerGripperDriver(Node):
 
         self._gripper_joint_state_pub = self.create_publisher(JointState, "~/joint_states", 10)        
 
-        self._seq = 0
         self._prev_joint_pos = 0.0
         self._prev_joint_state_time = self.get_clock().now().nanoseconds / 1e9 
         self._driver_state = 0
@@ -182,8 +181,7 @@ class Robotiq2FingerGripperDriver(Node):
         Returns:  Instance of `robotiq_2f_gripper_msgs/RobotiqGripperStatus` message. See the message declaration for fields description
         """
         status = RobotiqGripperStatus()
-        status.header.stamp = self.get_clock().now()
-        status.header.seq = self._seq
+        status.header.stamp = self.get_clock().now().to_msg()
         status.is_ready = self._gripper.is_ready()
         status.is_reset = self._gripper.is_reset()
         status.is_moving = self._gripper.is_moving()
@@ -200,8 +198,7 @@ class Robotiq2FingerGripperDriver(Node):
         """
         js = JointState()
         js.header.frame_id = ''
-        js.header.stamp = self.get_clock().now()
-        js.header.seq = self._seq
+        js.header.stamp = self.get_clock().now().to_msg()
         js.name = [self._joint_names]
         max_joint_limit = 0.8
         if( self._gripper.stroke == 0.140 ):
@@ -376,8 +373,7 @@ class Robotiq2FingerSimulatedGripperDriver(Node):
         Returns:  Instance of `robotiq_2f_gripper_msgs/RobotiqGripperStatus` message. See the message declaration for fields description
         """
         status = RobotiqGripperStatus()
-        status.header.stamp = self.get_clock().now()
-        status.header.seq = 0
+        status.header.stamp = self.get_clock().now().to_msg()
         status.is_ready = True
         status.is_reset = False
         status.is_moving = self._is_moving
@@ -409,8 +405,7 @@ class Robotiq2FingerSimulatedGripperDriver(Node):
         """
         js = JointState()
         js.header.frame_id = ''
-        js.header.stamp = self.get_clock().now()
-        js.header.seq = 0
+        js.header.stamp = self.get_clock().now().to_msg()
         js.name = [self._joint_names]
         pos = np.clip( self._current_joint_pos, 0.0, self._max_joint_limit)
         js.position = [pos]
