@@ -43,7 +43,7 @@ Module comModbusRtu: defines a class which communicates with Robotiq Grippers us
 The module depends on pymodbus (http://code.google.com/p/pymodbus/) for the Modbus RTU client.
 """
 
-from pymodbus.client.sync import ModbusSerialClient
+from pymodbus.client import ModbusSerialClient
 from math import ceil
 
 class Communication:	
