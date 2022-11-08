@@ -98,8 +98,6 @@ class CommandGripperActionServer(Node):
       watchdog = self.create_timer(5.0, self._execution_timeout)
 
       # Wait until goal is achieved and provide feedback
-      rate = self.create_rate(self.get_parameter('~rate').get_parameter_value())
-
       while rclpy.utilities.ok() and self._processing_goal and not self._is_stalled:             # While moving and not stalled provide feedback and check for result
           feedback.feedback = self._driver.get_current_gripper_status()
           goal_handle.publish_feedback( feedback )
@@ -114,7 +112,7 @@ class CommandGripperActionServer(Node):
               watchdog.shutdown()                         # Stop timeout watchdog.
               self._processing_goal = False 
               self._is_stalled = False              
-          rate.sleep()
+          time.sleep(1/self._rate)
       
       result = feedback                                   # Message declarations are the same 
       # Send result 

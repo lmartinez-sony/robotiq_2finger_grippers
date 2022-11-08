@@ -44,6 +44,7 @@ The end user should not need to use this class direcly since an instance of it i
 controlling a given gripper, and commanded by the user commands puubished by an action client instance.  
 """
 
+import time
 from .robotiq_2f_gripper import Robotiq2FingerGripper
 from robotiq_2f_gripper_msgs.msg import RobotiqGripperCommand, RobotiqGripperStatus
 from robotiq_2f_gripper_msgs.action import CommandRobotiqGripper
@@ -222,7 +223,6 @@ class Robotiq2FingerGripperDriver(Node):
             IOError: If Modbus RTU communication with the gripper is not achieved.
         """
         last_time = self.get_clock().now().nanoseconds / 1e9
-        r = self.create_rate(self._rate)
         while rclpy.utilities.ok() and self._driver_state != 2:
             # Check if communication is failing or taking too long
             dt = self.get_clock().now().nanoseconds / 1e9 - last_time
@@ -255,7 +255,7 @@ class Robotiq2FingerGripperDriver(Node):
                 # self._gripper_pub.publish(stat)
                 # self._gripper_joint_state_pub.publish(js)
                             
-            r.sleep()
+            time.sleep(1/self._rate)
 
     def update_driver(self):
         """
