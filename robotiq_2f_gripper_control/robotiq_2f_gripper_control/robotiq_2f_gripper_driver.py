@@ -121,7 +121,7 @@ class Robotiq2FingerGripperDriver(Node):
             out_of_bounds = True
             cmd_corrected = self._gripper.stroke
         if(out_of_bounds):
-            self.get_logger().debug("Position ({%.3f}[m]) out of limits for {%d}[mm] gripper: \n- New position: {%.3f}[m]\n- Min position: {%.3f}[m]\n- Max position: {%.3f}[m]".format(cmd, self._gripper.stroke*1000, cmd_corrected, 0.0, self._gripper.stroke))
+            self.get_logger().debug("Position ({:.3f}[m]) out of limits for {:d}[mm] gripper: \n- New position: {:.3f}[m]\n- Min position: {:.3f}[m]\n- Max position: {:.3f}[m]".format(cmd, int(self._gripper.stroke*1000), cmd_corrected, 0.0, self._gripper.stroke))
             cmd = cmd_corrected
         return cmd
 
@@ -134,7 +134,7 @@ class Robotiq2FingerGripperDriver(Node):
             out_of_bounds = True
             cmd_corrected = 0.1
         if(out_of_bounds):
-            self.get_logger().debug("Speed ({%.3f}[m/s]) out of limits for {%d}[mm] gripper: \n- New speed: {%.3f}[m/s]\n- Min speed: {%.3f}[m/s]\n- Max speed: {%.3f}[m/s]".format(cmd, self._gripper.stroke*1000, cmd_corrected, 0.013, 0.1))
+            self.get_logger().debug("Speed ({:.3f}[m/s]) out of limits for {:d}[mm] gripper: \n- New speed: {:.3f}[m/s]\n- Min speed: {:.3f}[m/s]\n- Max speed: {:.3f}[m/s]".format(cmd, int(self._gripper.stroke*1000), cmd_corrected, 0.013, 0.1))
             cmd = cmd_corrected
         return cmd
     
@@ -147,7 +147,7 @@ class Robotiq2FingerGripperDriver(Node):
             out_of_bounds = True
             cmd_corrected = 100.0
         if(out_of_bounds):
-            self.get_logger().debug("Force ({%.3f}[%]) out of limits for {%d}[mm] gripper: \n- New force: {%.3f}[%]\n- Min force: {%.3f}[%]\n- Max force: {%.3f}[%]".format(cmd, self._gripper.stroke*1000, cmd_corrected, 0, 100))
+            self.get_logger().debug("Force ({:.3f}[%]) out of limits for {:d}[mm] gripper: \n- New force: {:.3f}[%]\n- Min force: {:.3f}[%]\n- Max force: {:.3f}[%]".format(cmd, int(self._gripper.stroke*1000), cmd_corrected, 0, 100))
             cmd = cmd_corrected
         return cmd
     

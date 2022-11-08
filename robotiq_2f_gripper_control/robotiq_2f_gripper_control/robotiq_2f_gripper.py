@@ -21,7 +21,7 @@ class Robotiq2FingerGripper:
         
         connected = self.client.connectToDevice(device = comport)
         if not connected:
-            raise Exception("Communication with gripper %d on serial port: %s and baud rate: %d not achieved" % (device_id, comport, baud))
+            raise Exception("Communication with gripper {} on serial port: {} and baud rate: {} not achieved".format(device_id, comport, baud))
         
         self.init_success = True
         self.device_id = device_id+9

@@ -56,10 +56,9 @@ class CommandGripperActionServer(Node):
         else:   # Try to connect to a real gripper 
             self._driver = Robotiq2FingerGripperDriver( comport=self._comport, baud=self._baud, stroke=self._stroke, joint_names=self._joint_names, rate=self._rate)
 
-        self._action_server = ActionServer(self, CommandRobotiqGripperAction, "~/command", self.execute_cb)
-        self._joint_trajectory_action_server = ActionServer(FollowJointTrajectoryAction, "~/robotiq_controller/follow_joint_trajectory", \
+        self._action_server = ActionServer(self, CommandRobotiqGripper, "~/command", self.execute_cb)
+        self._joint_trajectory_action_server = ActionServer(self, FollowJointTrajectory, "~/robotiq_controller/follow_joint_trajectory",
                                                             self.execute_joint_trajectory_cb)
-        self._driver = driver       # Get handle to the Gripper Control Server
         
         # Wait until gripper driver is ready to take commands.
         watchdog = self.create_timer(15.0, self._connection_timeout)
@@ -67,7 +66,7 @@ class CommandGripperActionServer(Node):
             time.sleep(0.5)
             self.get_logger().warn("Waiting for gripper to be ready...")
         
-        watchdog.cancel() 
+        watchdog.destroy() 
         if rclpy.utilities.ok():
             self._processing_goal = False
             self._is_stalled = False
@@ -75,156 +74,159 @@ class CommandGripperActionServer(Node):
             self.get_logger().info("Robotiq server started")
 
         # Send and Request data from gripper and update joint state every `r`[Hz]
-        self._gripper_state_publisher_timer = self.create_timer(1/self._rate, self._driver.update_driver())
+        self._gripper_state_publisher_timer = self.create_timer(1/self._rate, self._update_driver)
     
-    def _connection_timeout(self, event):
+    def _connection_timeout(self):
         self.get_logger().fatal("Gripper on port {} seems not to respond".format(self._driver._comport))
         self.shutdown()
     
     def execute_cb(self, goal_handle):
-      goal_command = goal_handle.request
-      self.get_logger().debug( ("New goal received Pos:{%.3f} Speed: {%.3f} Force: {%.3f} Force-Stop: {%r}").format(goal_command.position, goal_command.speed, goal_command.force, goal_command.stop) )
-      # Send incoming command to gripper driver
-      self._driver.update_gripper_command(goal_command)
-      # Wait until command is received by the gripper 
-      time.sleep(0.1)
-      # Set Action Server as active === processing goal...
-      self._processing_goal = True        
-      
-      feedback = CommandRobotiqGripper.Feedback()
-      result = CommandRobotiqGripper.Result()
+        goal_command = goal_handle.request
+        self.get_logger().debug( ("New goal received Pos:{:.3f} Speed: {:.3f} Force: {:.3f} Force-Stop: {}").format(goal_command.position, goal_command.speed, goal_command.force, goal_command.stop) )
+        # Send incoming command to gripper driver
+        self._driver.update_gripper_command(goal_command)
+        # Wait until command is received by the gripper 
+        time.sleep(0.1)
+        # Set Action Server as active === processing goal...
+        self._processing_goal = True        
+        
+        feedback = CommandRobotiqGripper.Feedback()
+        result = CommandRobotiqGripper.Result()
 
-      # Set timeout timer 
-      watchdog = self.create_timer(5.0, self._execution_timeout)
+        # Set timeout timer 
+        watchdog = self.create_timer(5.0, self._execution_timeout)
 
-      # Wait until goal is achieved and provide feedback
-      while rclpy.utilities.ok() and self._processing_goal and not self._is_stalled:             # While moving and not stalled provide feedback and check for result
-          feedback.feedback = self._driver.get_current_gripper_status()
-          goal_handle.publish_feedback( feedback )
-          self.get_logger().debug("Error = {%.5f} Requested position = {%.3f} Current position = {%.3f}".format(abs(feedback.requested_position - feedback.position), feedback.requested_position, feedback.position))
-          # Check for completion of action 
-          if( feedback.fault_status != 0 and not self._is_stalled):               # Check for errors
-              self.get_logger().error("Fault status (gFLT) is: {%d}".format(feedback.fault_status))
-              self._is_stalled = True
-              goal_handle.abort()
-              return feedback
-          if( abs(feedback.requested_position - feedback.position) < GOAL_DETECTION_THRESHOLD or feedback.obj_detected):    # Check if position has been reached 
-              watchdog.shutdown()                         # Stop timeout watchdog.
-              self._processing_goal = False 
-              self._is_stalled = False              
-          time.sleep(1/self._rate)
-      
-      result = feedback                                   # Message declarations are the same 
-      # Send result 
-      if not self._is_stalled:
-          self.get_logger().debug("Goal reached or object detected Pos: {%.3f} PosRequested: {%.3f} ObjectDetected: {%r}".format(goal_command.position, feedback.requested_position, feedback.obj_detected) )
-          goal_handle.succeed()  
-      else:
-          self.get_logger().error("Goal aborted Pos: {%.3f} PosRequested: {%.3f} ObjectDetected: {%r}".format(goal_command.position, feedback.requested_position, feedback.obj_detected) )
-          goal_handle.abort()  
+        # Wait until goal is achieved and provide feedback
+        while rclpy.utilities.ok() and self._processing_goal and not self._is_stalled:             # While moving and not stalled provide feedback and check for result
+            feedback.feedback = self._driver.get_current_gripper_status()
+            goal_handle.publish_feedback( feedback )
+            self.get_logger().debug("Error = {:.5f} Requested position = {:.3f} Current position = {:.3f}".format(abs(feedback.feedback.requested_position - feedback.feedback.position), feedback.feedback.requested_position, feedback.feedback.position))
+            # Check for completion of action 
+            if( feedback.feedback.fault_status != 0 and not self._is_stalled):               # Check for errors
+                self.get_logger().error("Fault status (gFLT) is: {:d}".format(feedback.feedback.fault_status))
+                self._is_stalled = True
+                goal_handle.abort()
+                return feedback
+            if( abs(feedback.feedback.requested_position - feedback.feedback.position) < GOAL_DETECTION_THRESHOLD or feedback.feedback.obj_detected):    # Check if position has been reached 
+                watchdog.destroy()                         # Stop timeout watchdog.
+                self._processing_goal = False 
+                self._is_stalled = False              
+            time.sleep(1/self._rate)
+        
+        result.result=feedback.feedback                                   # Message declarations are the same 
+        # Send result 
+        if not self._is_stalled:
+            self.get_logger().debug("Goal reached or object detected Pos: {:.3f} PosRequested: {:.3f} ObjectDetected: {}".format(goal_command.position, feedback.feedback.requested_position, feedback.feedback.obj_detected) )
+            goal_handle.succeed()  
+        else:
+            self.get_logger().error("Goal aborted Pos: {:.3f} PosRequested: {:.3f} ObjectDetected: {}".format(goal_command.position, feedback.feedback.requested_position, feedback.feedback.obj_detected) )
+            goal_handle.abort()  
 
-      self._processing_goal = False 
-      self._is_stalled = False 
-      return result
-    
+        self._processing_goal = False 
+        self._is_stalled = False 
+        return result
+
     def execute_joint_trajectory_cb(self, goal_handle):
-      goal = goal_handle.request
-      self.get_logger().info("Trajectory received with {%d} points".format(len(goal.trajectory.points)))
-      feedback = FollowJointTrajectory.Feedback()
-      result = FollowJointTrajectory.Result()
-      current_status = self._driver.get_current_gripper_status()
+        goal = goal_handle.request
+        self.get_logger().info("Trajectory received with {:d} points".format(len(goal.trajectory.points)))
+        feedback = FollowJointTrajectory.Feedback()
+        result = FollowJointTrajectory.Result()
+        current_status = self._driver.get_current_gripper_status()
 
-      # Check trajectory joint names
-      joint_names = goal.trajectory.joint_names
-      if len(joint_names) != 1 and joint_names[0] != self._driver._joint_name :
-        msg = "Joint trajectory joints do not match gripper joint"
-        self.get_logger().error(msg)
-        result.error_code = result.INVALID_JOINTS
-        result.error_string = msg
-        goal_handle.abort()
-        return result
-      # Check trajectory points
-      if len(goal.trajectory.points) == 0:
-        msg = "Ignoring empty trajectory "
-        self.get_logger().error(msg)
-        result.error_code = result.INVALID_GOAL
-        result.error_string = msg
-        goal_handle.abort()
-        return result
-      
-      # Process goal trajectory
-      self._processing_goal = True  
-      self._is_stalled = False
-
-      goal_command = CommandRobotiqGripper.Goal()
-      feedback.joint_names = goal.trajectory.joint_names      
-      watchdog = self.create_timer((goal.trajectory.points[-1].time_from_start.to_sec() + 0.5), self._execution_timeout)
-
-      # Follow trajectory points
-      goal_trajectory_point = goal.trajectory.points[-1]
-      
-      # Validate trajectory point
-      if len(goal_trajectory_point.positions) != 1:
-        result.error_code = result.INVALID_GOAL
-        result.error_string = "Invalid joint position on trajectory point "
-        goal_handle.abort()
-        return result
-      target_speed = goal_trajectory_point.velocities[0] if len(goal_trajectory_point.velocities) > 0 else 0.01
-      target_force = goal_trajectory_point.effort[0] if len(goal_trajectory_point.effort) > 0 else 0.1
-      goal_command.position = self._driver.from_radians_to_distance(goal_trajectory_point.positions[0])
-      goal_command.speed = abs(target_speed) # To-Do: Convert to rad/s
-      goal_command.force = target_force
-      # Send incoming command to gripper driver
-      self._driver.update_gripper_command(goal_command)
-      # Set feedback desired value 
-      feedback.desired.positions = [goal_trajectory_point.positions[0]]
-      
-      while rclpy.utilities.ok() and self._processing_goal and not self._is_stalled:  
-        current_status = self._driver.get_current_gripper_status()          
-        feedback.actual.positions = [self._driver.get_current_joint_position()]
-        error = abs(feedback.actual.positions[0] - feedback.desired.positions[0])
-        self.get_logger().debug("Error : %.3f -- Actual: %.3f -- Desired: %.3f", error, self._driver.get_current_joint_position(), feedback.desired.positions[0])           
-
-        feedback.error.positions = [error]
-        goal_handle.publish_feedback( feedback )
+        # Check trajectory joint names
+        joint_names = goal.trajectory.joint_names
+        if len(joint_names) != 1 and joint_names[0] != self._driver._joint_name :
+            msg = "Joint trajectory joints do not match gripper joint"
+            self.get_logger().error(msg)
+            result.error_code = result.INVALID_JOINTS
+            result.error_string = msg
+            goal_handle.abort()
+            return result
+        # Check trajectory points
+        if len(goal.trajectory.points) == 0:
+            msg = "Ignoring empty trajectory "
+            self.get_logger().error(msg)
+            result.error_code = result.INVALID_GOAL
+            result.error_string = msg
+            goal_handle.abort()
+            return result
         
-        # Check for errors
-        if current_status.fault_status != 0 and not self._is_stalled:              
-          self._is_stalled = True
-          self._processing_goal = False 
-          self.get_logger().error(msg)
-          result.error_code = -6
-          result.error_string = "Gripper fault status (gFLT): " + current_status.fault_status
-          goal_handle.abort()
-          return result
-        # Check if object was detected
-        if current_status.obj_detected:     
-          watchdog.shutdown()                         # Stop timeout watchdog.
-          self._processing_goal = False 
-          self._is_stalled = False
-          result.error_code = result.SUCCESSFUL          
-          result.error_string = "Object detected/grasped" 
-          goal_handle.succeed()  
-          return result
-        # Check if current trajectory point was reached 
-        if error < GOAL_DETECTION_THRESHOLD :      
-          break
+        # Process goal trajectory
+        self._processing_goal = True  
+        self._is_stalled = False
+
+        goal_command = CommandRobotiqGripper.Goal()
+        feedback.joint_names = goal.trajectory.joint_names      
+        watchdog = self.create_timer((goal.trajectory.points[-1].time_from_start.to_sec() + 0.5), self._execution_timeout)
+
+        # Follow trajectory points
+        goal_trajectory_point = goal.trajectory.points[-1]
         
-      # Entire trajectory was followed/reached
-      watchdog.shutdown() 
-     
-      self.get_logger().debug("Goal reached")
-      result.error_code = result.SUCCESSFUL          
-      result.error_string = "Goal reached" 
-      goal_handle.succeed()  
+        # Validate trajectory point
+        if len(goal_trajectory_point.positions) != 1:
+            result.error_code = result.INVALID_GOAL
+            result.error_string = "Invalid joint position on trajectory point "
+            goal_handle.abort()
+            return result
+        target_speed = goal_trajectory_point.velocities[0] if len(goal_trajectory_point.velocities) > 0 else 0.01
+        target_force = goal_trajectory_point.effort[0] if len(goal_trajectory_point.effort) > 0 else 0.1
+        goal_command.position = self._driver.from_radians_to_distance(goal_trajectory_point.positions[0])
+        goal_command.speed = abs(target_speed) # To-Do: Convert to rad/s
+        goal_command.force = target_force
+        # Send incoming command to gripper driver
+        self._driver.update_gripper_command(goal_command)
+        # Set feedback desired value 
+        feedback.desired.positions = [goal_trajectory_point.positions[0]]
+        
+        while rclpy.utilities.ok() and self._processing_goal and not self._is_stalled:  
+            current_status = self._driver.get_current_gripper_status()          
+            feedback.actual.positions = [self._driver.get_current_joint_position()]
+            error = abs(feedback.actual.positions[0] - feedback.desired.positions[0])
+            self.get_logger().debug("Error : {:.3f} -- Actual: {:.3f} -- Desired: {:.3f}".format(error, self._driver.get_current_joint_position(), feedback.desired.positions[0]))           
 
-      self._processing_goal = False 
-      self._is_stalled = False 
+            feedback.error.positions = [error]
+            goal_handle.publish_feedback( feedback )
+          
+            # Check for errors
+            if current_status.fault_status != 0 and not self._is_stalled:              
+                self._is_stalled = True
+                self._processing_goal = False 
+                self.get_logger().error(msg)
+                result.error_code = -6
+                result.error_string = "Gripper fault status (gFLT): " + current_status.fault_status
+                goal_handle.abort()
+                return result
+            # Check if object was detected
+            if current_status.obj_detected:     
+                watchdog.destroy()                         # Stop timeout watchdog.
+                self._processing_goal = False 
+                self._is_stalled = False
+                result.error_code = result.SUCCESSFUL          
+                result.error_string = "Object detected/grasped" 
+                goal_handle.succeed()  
+                return result
+            # Check if current trajectory point was reached 
+            if error < GOAL_DETECTION_THRESHOLD :      
+                break
+          
+        # Entire trajectory was followed/reached
+        watchdog.destroy() 
+       
+        self.get_logger().debug("Goal reached")
+        result.error_code = result.SUCCESSFUL          
+        result.error_string = "Goal reached" 
+        goal_handle.succeed()  
 
-      return result
+        self._processing_goal = False 
+        self._is_stalled = False 
 
-    def _execution_timeout(self, event):
-        self.get_logger().error("%s: Achieving goal is taking too long, dropping current goal")
+        return result
+
+    def _update_driver(self):
+        self._driver.update_driver()
+
+    def _execution_timeout(self):
+        self.get_logger().error("Achieving goal is taking too long, dropping current goal")
         self._is_stalled = True
         self._processing_goal = False
 
